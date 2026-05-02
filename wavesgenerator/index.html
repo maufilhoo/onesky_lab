@@ -1,11 +1,63 @@
+
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Wave Stripe Generator</title>
-<link rel="stylesheet" href="shared/tokens.css">
-<script src="shared/utils.js"></script>
+<style>
+/* ── tokens.css (inlined) ── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+:root {
+  --bg-app: #111; --bg-panel: #1a1a1a; --bg-canvas: #0e0e0e;
+  --border: #2a2a2a; --border-light: #333;
+  --text: #f0f0f0; --text-dim: #777; --text-dimmer: #444;
+  --accent: #ffffff; --shape-fill: #ffffff;
+  --track-bg: #2a2a2a; --thumb: #ffffff;
+  --section-label: #555; --focus: #4d8eff;
+}
+[data-theme="light"] {
+  --bg-app: #f5f5f3; --bg-panel: #ffffff; --bg-canvas: #ececea;
+  --border: #e2e2de; --border-light: #cfcfca;
+  --text: #1a1a1a; --text-dim: #6b6b6b; --text-dimmer: #a8a8a8;
+  --accent: #111; --shape-fill: #111;
+  --track-bg: #d8d8d4; --thumb: #111; --section-label: #888;
+}
+body { background: var(--bg-app); color: var(--text); font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
+input[type=range] { -webkit-appearance: none; appearance: none; width: 100%; height: 3px; background: var(--track-bg); border-radius: 2px; outline: none; }
+input[type=range]:focus-visible { box-shadow: 0 0 0 2px var(--focus); border-radius: 4px; }
+input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; appearance: none; width: 13px; height: 13px; border-radius: 50%; background: var(--thumb); cursor: pointer; transition: transform 0.1s; }
+input[type=range]::-webkit-slider-thumb:hover { transform: scale(1.2); }
+input[type=range]::-moz-range-thumb { width: 13px; height: 13px; border-radius: 50%; background: var(--thumb); cursor: pointer; border: none; }
+button:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.chuchu-toast { position: fixed; bottom: 48px; left: 50%; transform: translateX(-50%) translateY(8px); background: #fff; color: #111; font-size: 11px; font-weight: 600; letter-spacing: 0.08em; padding: 8px 16px; border-radius: 20px; opacity: 0; pointer-events: none; transition: all 0.25s; z-index: 1000; }
+.chuchu-toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+.theme-toggle { background: transparent; border: 1px solid var(--border-light); color: var(--text-dim); padding: 4px 10px; border-radius: 4px; font-size: 10px; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; cursor: pointer; font-family: inherit; transition: all 0.15s; }
+.theme-toggle:hover { color: var(--text); border-color: #555; }
+.panel-toggle { display: none; position: fixed; top: 8px; right: 8px; z-index: 50; background: var(--bg-panel); color: var(--text); border: 1px solid var(--border-light); border-radius: 6px; padding: 8px 10px; font-size: 11px; font-weight: 600; letter-spacing: 0.08em; cursor: pointer; font-family: inherit; }
+@media (max-width: 720px) { .panel-toggle { display: block; } .panel { position: fixed !important; top: 0; left: 0; bottom: 0; width: 84% !important; max-width: 320px; z-index: 40; transform: translateX(-100%); transition: transform .22s cubic-bezier(.2,.7,.3,1); } .panel.open { transform: translateX(0); } }
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
+</style>
+<script>
+/* ── utils.js (inlined) ── */
+(function (global) {
+  'use strict';
+  function rafThrottle(fn) { let queued = false, lastArgs = null; return function (...args) { lastArgs = args; if (queued) return; queued = true; requestAnimationFrame(() => { queued = false; fn.apply(this, lastArgs); }); }; }
+  function toast(msg, ms = 1800) { let el = document.querySelector('.chuchu-toast'); if (!el) { el = document.createElement('div'); el.className = 'chuchu-toast'; document.body.appendChild(el); } el.textContent = msg; el.classList.add('show'); clearTimeout(el._t); el._t = setTimeout(() => el.classList.remove('show'), ms); }
+  function download(content, name, mime) { const blob = content instanceof Blob ? content : new Blob([content], { type: mime || 'application/octet-stream' }); const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = name; a.click(); setTimeout(() => URL.revokeObjectURL(url), 1000); }
+  const THEME_KEY = 'chuchu.theme';
+  function applyTheme(t) { document.documentElement.setAttribute('data-theme', t); try { localStorage.setItem(THEME_KEY, t); } catch (_) {} }
+  function initTheme() { let t = null; try { t = localStorage.getItem(THEME_KEY); } catch (_) {} if (!t) t = matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark'; applyTheme(t); return t; }
+  function toggleTheme() { const cur = document.documentElement.getAttribute('data-theme') || 'dark'; const next = cur === 'light' ? 'dark' : 'light'; applyTheme(next); return next; }
+  function mountThemeToggle(parent) { const btn = document.createElement('button'); btn.className = 'theme-toggle'; btn.type = 'button'; btn.setAttribute('aria-label', 'Toggle theme'); const sync = () => { btn.textContent = (document.documentElement.getAttribute('data-theme') === 'light') ? '☾ Dark' : '☀ Light'; }; btn.addEventListener('click', () => { toggleTheme(); sync(); }); sync(); parent.appendChild(btn); return btn; }
+  function createHistory(limit = 50) { let stack = [], idx = -1; return { push(state) { const snap = JSON.parse(JSON.stringify(state)); stack = stack.slice(0, idx + 1); stack.push(snap); if (stack.length > limit) stack.shift(); idx = stack.length - 1; }, undo() { if (idx <= 0) return null; idx--; return JSON.parse(JSON.stringify(stack[idx])); }, redo() { if (idx >= stack.length - 1) return null; idx++; return JSON.parse(JSON.stringify(stack[idx])); }, canUndo() { return idx > 0; }, canRedo() { return idx < stack.length - 1; }, reset(state) { stack = []; idx = -1; this.push(state); } }; }
+  function createPresets(toolKey) { const key = `chuchu.presets.${toolKey}`; function readAll() { try { return JSON.parse(localStorage.getItem(key) || '{}'); } catch (_) { return {}; } } function writeAll(obj) { try { localStorage.setItem(key, JSON.stringify(obj)); } catch (_) {} } return { list() { return Object.keys(readAll()); }, save(name, state) { const all = readAll(); all[name] = state; writeAll(all); }, load(name) { return readAll()[name] || null; }, remove(name) { const all = readAll(); delete all[name]; writeAll(all); } }; }
+  function bindShortcuts(shortcuts, opts = {}) { const skipInputs = opts.skipInputs !== false; function key(e) { const parts = []; if (e.metaKey) parts.push('meta'); if (e.ctrlKey) parts.push('ctrl'); if (e.altKey) parts.push('alt'); if (e.shiftKey) parts.push('shift'); parts.push(e.key.toLowerCase()); return parts.join('+'); } function handler(e) { if (skipInputs) { const t = e.target; if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return; } const fn = shortcuts[key(e)]; if (fn) { e.preventDefault(); fn(e); } } document.addEventListener('keydown', handler); return () => document.removeEventListener('keydown', handler); }
+  function mountPanelToggle(panelEl) { const btn = document.createElement('button'); btn.className = 'panel-toggle'; btn.type = 'button'; btn.textContent = '☰ Controls'; btn.setAttribute('aria-label', 'Toggle controls panel'); btn.setAttribute('aria-expanded', 'false'); btn.addEventListener('click', () => { const open = panelEl.classList.toggle('open'); btn.setAttribute('aria-expanded', String(open)); }); document.body.appendChild(btn); return btn; }
+  function enhanceRange(input, label) { if (label) input.setAttribute('aria-label', label); input.setAttribute('aria-valuemin', input.min); input.setAttribute('aria-valuemax', input.max); const sync = () => input.setAttribute('aria-valuenow', input.value); sync(); input.addEventListener('input', sync); }
+  global.Chuchu = { rafThrottle, toast, download, initTheme, toggleTheme, applyTheme, mountThemeToggle, createHistory, createPresets, bindShortcuts, mountPanelToggle, enhanceRange };
+})(window);
+</script>
 <style>
 :root {
   --bg: var(--bg-app);
@@ -15,10 +67,12 @@
   --dimmer: var(--text-dimmer);
   --track: var(--track-bg);
 }
-.preset-chip { background: var(--bg); border: 1px solid var(--border); color: var(--dim); font-size: 10px; padding: 4px 8px; border-radius: 10px; cursor: pointer; font-family: inherit; }
+.preset-chip { background: var(--bg); border: 1px solid var(--border); color: var(--dim); font-size: 10px; padding: 4px 8px; border-radius: 10px; cursor: grab; font-family: inherit; transition: opacity .15s, border-color .12s; }
 .preset-chip:hover { color: var(--text); border-color: var(--border2); }
-.preset-chip .x { margin-left: 6px; opacity: .5; }
+.preset-chip .x { margin-left: 6px; opacity: .5; cursor: pointer; }
 .preset-chip .x:hover { opacity: 1; color: #f55; }
+.preset-chip.dragging { opacity: .3; cursor: grabbing; }
+.preset-chip.drag-over { border-color: #fff; background: rgba(255,255,255,.08); }
 
 .topbar { height: 42px; background: var(--panel); border-bottom: 1px solid var(--border); display: flex; align-items: center; padding: 0 18px; gap: 10px; flex-shrink: 0; }
 .topbar-title { font-size: 11px; font-weight: 600; letter-spacing: 0.14em; text-transform: uppercase; }
@@ -840,28 +894,95 @@ document.getElementById('bg-custom-input').addEventListener('input', e => {
 document.getElementById('btn-undo').addEventListener('click', () => { const s = history.undo(); if (s) restore(s); });
 document.getElementById('btn-redo').addEventListener('click', () => { const s = history.redo(); if (s) restore(s); });
 
-/* ── Presets ── */
+/* ── Presets — with drag-to-reorder ── */
 const presets = Chuchu.createPresets('wave-stripes');
+const PRESET_ORDER_KEY = 'chuchu.presets.wave-stripes.order';
+
+function loadPresetOrder() {
+  try { return JSON.parse(localStorage.getItem(PRESET_ORDER_KEY) || '[]'); } catch(_) { return []; }
+}
+function savePresetOrder(order) {
+  try { localStorage.setItem(PRESET_ORDER_KEY, JSON.stringify(order)); } catch(_) {}
+}
+function getOrderedPresets() {
+  const all     = presets.list();
+  const ordered = loadPresetOrder().filter(n => all.includes(n));
+  all.forEach(n => { if (!ordered.includes(n)) ordered.push(n); });
+  return ordered;
+}
+function reorderPresets(fromName, toName) {
+  const order = getOrderedPresets();
+  const fi = order.indexOf(fromName), ti = order.indexOf(toName);
+  if (fi === -1 || ti === -1 || fi === ti) return;
+  order.splice(fi, 1);
+  order.splice(ti, 0, fromName);
+  savePresetOrder(order);
+  renderPresets();
+}
+
 function renderPresets() {
   const row = document.getElementById('presets-row');
   row.innerHTML = '';
-  const names = presets.list();
-  if (!names.length) { row.innerHTML = '<span style="font-size:9px;color:var(--dimmer);">Nenhum preset salvo</span>'; return; }
+  const names = getOrderedPresets();
+  if (!names.length) {
+    row.innerHTML = '<span style="font-size:9px;color:var(--dimmer);">Nenhum preset salvo</span>';
+    return;
+  }
   names.forEach(n => {
     const chip = document.createElement('button');
     chip.className = 'preset-chip';
     chip.type = 'button';
+    chip.draggable = true;
     chip.innerHTML = `<span>${n}</span><span class="x" title="Excluir">×</span>`;
-    chip.firstChild.addEventListener('click', () => { restore(presets.load(n)); history.push(snapshot()); Chuchu.toast(`Preset "${n}"`); });
-    chip.lastChild.addEventListener('click', e => { e.stopPropagation(); presets.remove(n); renderPresets(); });
+
+    chip.firstChild.addEventListener('click', () => {
+      restore(presets.load(n));
+      history.push(snapshot());
+      Chuchu.toast(`Preset "${n}"`);
+    });
+    chip.lastChild.addEventListener('click', e => {
+      e.stopPropagation();
+      presets.remove(n);
+      const order = loadPresetOrder();
+      const idx = order.indexOf(n);
+      if (idx > -1) { order.splice(idx, 1); savePresetOrder(order); }
+      renderPresets();
+    });
+
+    chip.addEventListener('dragstart', e => {
+      e.dataTransfer.setData('text/plain', n);
+      e.dataTransfer.effectAllowed = 'move';
+      setTimeout(() => chip.classList.add('dragging'), 0);
+    });
+    chip.addEventListener('dragend', () => chip.classList.remove('dragging'));
+    chip.addEventListener('dragover', e => {
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'move';
+      chip.classList.add('drag-over');
+    });
+    chip.addEventListener('dragleave', e => {
+      if (!chip.contains(e.relatedTarget)) chip.classList.remove('drag-over');
+    });
+    chip.addEventListener('drop', e => {
+      e.preventDefault();
+      chip.classList.remove('drag-over');
+      const from = e.dataTransfer.getData('text/plain');
+      if (from && from !== n) reorderPresets(from, n);
+    });
+
     row.appendChild(chip);
   });
 }
+
 document.getElementById('preset-save').addEventListener('click', () => {
   const name = prompt('Nome do preset:');
   if (!name) return;
-  presets.save(name.trim(), snapshot()); renderPresets();
-  Chuchu.toast(`Salvo "${name}"`);
+  const trimmed = name.trim();
+  presets.save(trimmed, snapshot());
+  const order = loadPresetOrder();
+  if (!order.includes(trimmed)) { order.push(trimmed); savePresetOrder(order); }
+  renderPresets();
+  Chuchu.toast(`Salvo "${trimmed}"`);
 });
 renderPresets();
 
