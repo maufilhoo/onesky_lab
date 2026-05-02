@@ -183,6 +183,11 @@ input[type=number]:focus { border-color: #555; }
         <input type="range" id="r-drift" min="0" max="180" value="0" step="5">
         <div class="ctrl-hint">vagueia e cruza outras fitas</div>
       </div>
+      <div class="ctrl ctrl-full">
+        <div class="ctrl-head"><span class="ctrl-label">Gradiente de espessura</span><span class="ctrl-val" id="v-thickgrad">0%</span></div>
+        <input type="range" id="r-thickgrad" min="0" max="100" value="0" step="5">
+        <div class="ctrl-hint">progressão fina → grossa entre fitas</div>
+      </div>
     </div>
   </div>
 
@@ -281,9 +286,8 @@ const S = {
   orient: 'horizontal',
   count: 6, thick: 80, gap: 20,
   amp: 60, freq: 0.5, phaserand: 50,
-  thickvar: 0, ampvar: 0, drift: 0,
+  thickvar: 0, thickgrad: 0, ampvar: 0, drift: 0,
   slices: 4, slicew: 20, slicevar: 0, slicepos: 0,
-  taper: 0, taperMode: 'ends',
   bg: '#2B0D2F',
 };
 
@@ -377,47 +381,33 @@ function driftY(t, amp, phase) {
   return amp * Math.sin(t * 0.35 * Math.PI * 2 + phase);
 }
 
-/* ── Taper scale: returns a 0‥1 multiplier for half-thickness at position t.
-   'ends'  → sin curve: thin at both ends, full at center.
-   'center'→ |cos| curve: full at ends, thin at center (bowtie). */
-function taperScale(t, taper, mode) {
-  if (taper === 0) return 1;
-  const f    = taper / 100;
-  const base = mode === 'center'
-    ? Math.abs(Math.cos(t * Math.PI))
-    : Math.sin(t * Math.PI);
-  return 1 - f * (1 - base);
-}
-
 /* ── Ribbon geometry ── */
-function ribbonPoints(W, H, baseCx, baseCy, amp, freq, wavePhase, thick, orient, noiseArr, driftAmp, driftPhase, taper, taperMode) {
-  const N = Math.max(200, W);
+function ribbonPoints(W, H, baseCx, baseCy, amp, freq, wavePhase, thick, orient, noiseArr, driftAmp, driftPhase) {
+  const N  = Math.max(200, W);
+  const hw = thick / 2;
   const top = [], bot = [];
 
   if (orient === 'horizontal') {
     for (let i = 0; i <= N; i++) {
-      const t   = i / N;
-      const x   = t * W;
-      const cy  = baseCy + driftY(t, driftAmp, driftPhase) + sineY(t, amp, freq, wavePhase);
-      const hw  = thick / 2 * taperScale(t, taper, taperMode);
+      const t  = i / N;
+      const x  = t * W;
+      const cy = baseCy + driftY(t, driftAmp, driftPhase) + sineY(t, amp, freq, wavePhase);
       top.push({ x, y: cy - hw });
       bot.push({ x, y: cy + hw });
     }
   } else if (orient === 'vertical') {
     for (let i = 0; i <= N; i++) {
-      const t   = i / N;
-      const y   = t * H;
-      const cx  = baseCx + driftY(t, driftAmp, driftPhase) + sineY(t, amp, freq, wavePhase);
-      const hw  = thick / 2 * taperScale(t, taper, taperMode);
+      const t  = i / N;
+      const y  = t * H;
+      const cx = baseCx + driftY(t, driftAmp, driftPhase) + sineY(t, amp, freq, wavePhase);
       top.push({ x: cx - hw, y });
       bot.push({ x: cx + hw, y });
     }
   } else { /* organic */
     for (let i = 0; i <= N; i++) {
-      const t   = i / N;
-      const x   = t * W;
-      const cy  = baseCy + driftY(t, driftAmp, driftPhase) + organicY(t, amp, noiseArr || []);
-      const hw  = thick / 2 * taperScale(t, taper, taperMode);
+      const t  = i / N;
+      const x  = t * W;
+      const cy = baseCy + driftY(t, driftAmp, driftPhase) + organicY(t, amp, noiseArr || []);
       top.push({ x, y: cy - hw });
       bot.push({ x, y: cy + hw });
     }
@@ -509,20 +499,25 @@ function getColors(arr, pal) { return arr.map(i => pal[i]); }
 /* ── Per-ribbon params (shared between draw + SVG export) ── */
 function buildRibbonParams(W, H) {
   if (!phases.length) initRandom();
-  const n         = S.count;
-  const isVert    = S.orient === 'vertical';
-  const crossDim  = isVert ? W : H;
-  const totalThick = n * S.thick + (n - 1) * S.gap;
-  const startOff  = (crossDim - totalThick) / 2;
-  const bases     = distributeColors(activeBases, PALETTES.base, n);
+  const n        = S.count;
+  const isVert   = S.orient === 'vertical';
+  const crossDim = isVert ? W : H;
+  /* Slot-based layout: ribbon centres always span edge-to-edge at gap=0.
+     Positive gap pushes ribbons further apart (they can bleed off the canvas). */
+  const slot     = crossDim / n;
+  const bases    = distributeColors(activeBases, PALETTES.base, n);
   const slicePool = getColors(activeSlices, PALETTES.slice);
 
   return Array.from({length: n}, (_, i) => {
-    const thickF = thickFactors[i % thickFactors.length] || 0;
-    const ampF   = ampFactors[i % ampFactors.length] || 0;
-    const thick  = Math.max(8, S.thick  * (1 + thickF * S.thickvar / 100));
-    const amp    = Math.max(0, S.amp    * (1 + ampF   * S.ampvar   / 100));
-    const center = startOff + S.thick / 2 + i * (S.thick + S.gap);
+    const thickF    = thickFactors[i % thickFactors.length] || 0;
+    const ampF      = ampFactors[i % ampFactors.length] || 0;
+    /* Gradient: linear progression from (1-grad) to (1+grad) across ribbons. */
+    const t         = n > 1 ? i / (n - 1) : 0.5;
+    const gradMult  = 1 + (S.thickgrad / 100) * (t - 0.5) * 1.6;
+    const thick     = Math.max(8, S.thick * gradMult * (1 + thickF * S.thickvar / 100));
+    const amp       = Math.max(0, S.amp   * (1 + ampF * S.ampvar / 100));
+    /* Centre: evenly distributed slots + extra gap spread symmetrically. */
+    const center    = slot * (i + 0.5) + (i - (n - 1) / 2) * S.gap;
 
     return {
       fc:         bases[i % bases.length],
@@ -542,7 +537,6 @@ function buildRibbonParams(W, H) {
   });
 }
 
-/* ── Main draw ── */
 /* ── Render to any 2D context at given dimensions ── */
 function renderToContext(targetCtx, W, H) {
   targetCtx.fillStyle = S.bg;
@@ -599,8 +593,9 @@ const sliderDefs = [
   { id: 'amp',      key: 'amp',      fmt: v => `${v} px`                           },
   { id: 'freq',     key: 'freq',     fmt: v => (v / 10).toFixed(1) + 'x'           },
   { id: 'phaserand',key: 'phaserand',fmt: v => `${v}%`                             },
-  { id: 'thickvar', key: 'thickvar', fmt: v => `${v}%`                             },
-  { id: 'ampvar',   key: 'ampvar',   fmt: v => `${v}%`                             },
+  { id: 'thickvar',  key: 'thickvar',  fmt: v => `${v}%`                            },
+  { id: 'thickgrad', key: 'thickgrad', fmt: v => `${v}%`                            },
+  { id: 'ampvar',    key: 'ampvar',    fmt: v => `${v}%`                            },
   { id: 'drift',    key: 'drift',    fmt: v => `${v} px`                           },
   { id: 'slices',   key: 'slices',   fmt: v => v,                        int: true },
   { id: 'slicew',   key: 'slicew',   fmt: v => `${v}%`                             },
@@ -624,14 +619,15 @@ sliderDefs.forEach(({id, key, fmt, int}) => {
 });
 
 /* ── Orientation ── */
-document.querySelectorAll('.orient-btn').forEach(btn => {
+document.querySelectorAll('[data-orient]').forEach(btn => {
   btn.addEventListener('click', () => {
-    document.querySelectorAll('.orient-btn').forEach(b => b.classList.remove('active'));
+    document.querySelectorAll('[data-orient]').forEach(b => b.classList.remove('active'));
     btn.classList.add('active');
     S.orient = btn.dataset.orient;
     draw();
   });
 });
+
 
 /* ── Background ── */
 document.querySelectorAll('.bg-opt').forEach(opt => {
@@ -652,13 +648,38 @@ document.getElementById('btn-regen').addEventListener('click', () => {
   draw();
 });
 
-/* ── SVG path helper ── */
-function svgPathD(top, bot, precision = 2) {
-  const p = n => n.toFixed(precision);
-  let d = `M ${p(top[0].x)} ${p(top[0].y)}`;
-  for (let i = 1; i < top.length; i++) d += ` L ${p(top[i].x)} ${p(top[i].y)}`;
-  for (let i = bot.length - 1; i >= 0; i--) d += ` L ${p(bot[i].x)} ${p(bot[i].y)}`;
-  return d + ' Z';
+/* ── SVG path — quadratic Bézier curves (step=8 → ~83% smaller than L-only) ──
+   Downsamples the point arrays, then connects with Q commands using original
+   points as control points and midpoints as on-curve anchors. Works for both
+   full ribbon bodies and slice sub-segments (pass i0/i1 to limit the range). */
+const SVG_STEP = 8;
+
+function svgSample(pts, a, b) {
+  const out = [pts[a]];
+  for (let i = a + SVG_STEP; i < b; i += SVG_STEP) out.push(pts[i]);
+  if (out[out.length - 1] !== pts[b]) out.push(pts[b]);
+  return out;
+}
+
+function svgQBezPath(top, bot, i0 = 0, i1 = top.length - 1) {
+  const f  = n => n.toFixed(1);
+  const ts = svgSample(top, i0, i1);
+  const bs = svgSample(bot, i0, i1);
+
+  let d = `M ${f(ts[0].x)} ${f(ts[0].y)}`;
+  for (let i = 1; i < ts.length - 1; i++) {
+    const mx = (ts[i].x + ts[i+1].x) / 2, my = (ts[i].y + ts[i+1].y) / 2;
+    d += ` Q ${f(ts[i].x)} ${f(ts[i].y)} ${f(mx)} ${f(my)}`;
+  }
+  d += ` L ${f(ts[ts.length-1].x)} ${f(ts[ts.length-1].y)}`;
+
+  d += ` L ${f(bs[bs.length-1].x)} ${f(bs[bs.length-1].y)}`;
+  for (let i = bs.length - 2; i > 0; i--) {
+    const mx = (bs[i].x + bs[i-1].x) / 2, my = (bs[i].y + bs[i-1].y) / 2;
+    d += ` Q ${f(bs[i].x)} ${f(bs[i].y)} ${f(mx)} ${f(my)}`;
+  }
+  d += ` L ${f(bs[0].x)} ${f(bs[0].y)} Z`;
+  return d;
 }
 
 /* ── Export SVG — grouped by ribbon, slices individually named ── */
@@ -671,12 +692,11 @@ document.getElementById('btn-export').addEventListener('click', () => {
 
   ribbons.forEach((p, i) => {
     const {top, bot} = ribbonPoints(W, H, p.cx, p.cy, p.amp, p.freq, p.phase, p.thick, S.orient, p.noise, p.driftAmp, p.driftPhase);
-    const d      = svgPathD(top, bot);
+    const d      = svgQBezPath(top, bot);
     const clipId = `clip-fita-${i}`;
 
     defs += `<clipPath id="${clipId}"><path d="${d}"/></clipPath>`;
 
-    /* Open ribbon group */
     body += `\n  <g id="fita-${i}" data-fill="${p.fc}">`;
     body += `\n    <path id="fita-${i}-corpo" fill="${p.fc}" d="${d}"/>`;
 
@@ -686,11 +706,7 @@ document.getElementById('btn-export').addEventListener('click', () => {
       segs.forEach(({i0, i1}, s) => {
         if (i1 <= i0) return;
         const color = p.slicePool[s % p.slicePool.length];
-        let sd = `M ${top[i0].x.toFixed(1)} ${top[i0].y.toFixed(1)}`;
-        for (let k = i0 + 1; k <= i1; k++) sd += ` L ${top[k].x.toFixed(1)} ${top[k].y.toFixed(1)}`;
-        for (let k = i1; k >= i0; k--) sd += ` L ${bot[k].x.toFixed(1)} ${bot[k].y.toFixed(1)}`;
-        sd += ' Z';
-        body += `\n      <path id="fita-${i}-fatia-${s}" fill="${color}" d="${sd}"/>`;
+        body += `\n      <path id="fita-${i}-fatia-${s}" fill="${color}" d="${svgQBezPath(top, bot, i0, i1)}"/>`;
       });
       body += `\n    </g>`;
     }
@@ -784,14 +800,14 @@ function restore(snap) {
   Object.assign(S, snap.S);
   activeBases  = [...snap.activeBases];
   activeSlices = [...snap.activeSlices];
-  ['count','thick','gap','amp','phaserand','thickvar','ampvar','drift','slices','slicew','slicevar','slicepos'].forEach(k => {
+  ['count','thick','gap','amp','phaserand','thickvar','thickgrad','ampvar','drift','slices','slicew','slicevar','slicepos'].forEach(k => {
     const el = document.getElementById(`r-${k}`);
     if (el) { el.value = S[k]; el.dispatchEvent(new Event('input')); }
   });
   const freqEl = document.getElementById('r-freq');
   freqEl.value = Math.round(S.freq * 10);
   document.getElementById('v-freq').textContent = S.freq.toFixed(1) + 'x';
-  document.querySelectorAll('.orient-btn').forEach(b => b.classList.toggle('active', b.dataset.orient === S.orient));
+  document.querySelectorAll('[data-orient]').forEach(b => b.classList.toggle('active', b.dataset.orient === S.orient));
   document.querySelectorAll('.bg-opt').forEach(o => o.classList.toggle('active', o.dataset.bg === S.bg));
   /* sync custom bg picker */
   const customBgInput = document.getElementById('bg-custom-input');
@@ -808,7 +824,7 @@ history.reset(snapshot());
 const debSnap = (() => { let t; return () => { clearTimeout(t); t = setTimeout(() => history.push(snapshot()), 250); }; })();
 /* Bug fix: range inputs fire 'input'; click-based elements (orient, bg, swatches) fire 'click'. */
 document.querySelectorAll('input[type=range]').forEach(el => el.addEventListener('input', debSnap, true));
-document.querySelectorAll('.orient-btn,.bg-opt').forEach(el => el.addEventListener('click', debSnap));
+document.querySelectorAll('[data-orient],.bg-opt').forEach(el => el.addEventListener('click', debSnap));
 /* Use delegation on palette containers so dynamically rebuilt swatches are always covered. */
 document.getElementById('pal-base').addEventListener('click',  e => { if (e.target.classList.contains('swatch')) debSnap(); });
 document.getElementById('pal-slice').addEventListener('click', e => { if (e.target.classList.contains('swatch')) debSnap(); });
