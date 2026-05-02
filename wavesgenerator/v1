@@ -1,0 +1,864 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Wave Stripe Generator</title>
+<link rel="stylesheet" href="shared/tokens.css">
+<script src="shared/utils.js"></script>
+<style>
+:root {
+  --bg: var(--bg-app);
+  --panel: var(--bg-panel);
+  --border2: var(--border-light);
+  --dim: var(--text-dim);
+  --dimmer: var(--text-dimmer);
+  --track: var(--track-bg);
+}
+.preset-chip { background: var(--bg); border: 1px solid var(--border); color: var(--dim); font-size: 10px; padding: 4px 8px; border-radius: 10px; cursor: pointer; font-family: inherit; }
+.preset-chip:hover { color: var(--text); border-color: var(--border2); }
+.preset-chip .x { margin-left: 6px; opacity: .5; }
+.preset-chip .x:hover { opacity: 1; color: #f55; }
+
+.topbar { height: 42px; background: var(--panel); border-bottom: 1px solid var(--border); display: flex; align-items: center; padding: 0 18px; gap: 10px; flex-shrink: 0; }
+.topbar-title { font-size: 11px; font-weight: 600; letter-spacing: 0.14em; text-transform: uppercase; }
+.topbar-tag { font-size: 9px; color: var(--dim); letter-spacing: 0.08em; border: 1px solid var(--border2); padding: 2px 7px; border-radius: 10px; }
+.topbar-right { margin-left: auto; display: flex; align-items: center; gap: 10px; }
+.topbar-btn { background: #fff; color: #111; border: none; padding: 6px 14px; border-radius: 4px; font-size: 10px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; cursor: pointer; font-family: inherit; transition: background .15s; }
+.topbar-btn:hover { background: #ddd; }
+.topbar-btn-ghost { background: transparent; color: var(--dim); border: 1px solid var(--border2); padding: 5px 12px; border-radius: 4px; font-size: 10px; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; cursor: pointer; font-family: inherit; transition: all .15s; }
+.topbar-btn-ghost:hover { color: var(--text); border-color: #555; }
+
+.main { display: flex; flex: 1; overflow: hidden; }
+.panel { width: 300px; flex-shrink: 0; background: var(--panel); border-right: 1px solid var(--border); display: flex; flex-direction: column; overflow-y: auto; overflow-x: hidden; }
+.panel::-webkit-scrollbar { width: 3px; }
+.panel::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 2px; }
+
+.psec { padding: 10px 14px; border-bottom: 1px solid var(--border); }
+.psec:last-child { border-bottom: none; }
+.psec-title { font-size: 9px; font-weight: 600; letter-spacing: 0.18em; text-transform: uppercase; color: var(--dimmer); margin-bottom: 8px; }
+
+.ctrl-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 14px; }
+.ctrl-grid .ctrl-full { grid-column: 1 / -1; }
+
+.ctrl { margin-bottom: 0; }
+.ctrl-head { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 4px; }
+.ctrl-label { font-size: 10px; font-weight: 500; color: var(--text); }
+.ctrl-val { font-size: 9px; color: var(--dim); font-variant-numeric: tabular-nums; min-width: 36px; text-align: right; }
+.ctrl-hint { font-size: 8px; color: var(--dimmer); margin-top: 2px; letter-spacing: 0.04em; }
+input[type=range] { -webkit-appearance: none; appearance: none; width: 100%; height: 2px; background: var(--track); border-radius: 2px; outline: none; }
+input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 11px; height: 11px; border-radius: 50%; background: #fff; cursor: pointer; transition: transform .1s; }
+input[type=range]::-webkit-slider-thumb:hover { transform: scale(1.25); }
+input[type=range]::-moz-range-thumb { width: 11px; height: 11px; border-radius: 50%; background: #fff; cursor: pointer; border: none; }
+
+.orient-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; }
+.orient-btn { background: var(--bg); border: 1px solid var(--border2); border-radius: 5px; padding: 6px 3px 5px; cursor: pointer; display: flex; flex-direction: column; align-items: center; gap: 4px; transition: all .12s; color: var(--dim); }
+.orient-btn:hover { color: var(--text); border-color: #444; }
+.orient-btn.active { border-color: #fff; background: rgba(255,255,255,.06); color: #fff; }
+.orient-btn svg { display: block; }
+.orient-name { font-size: 7px; letter-spacing: 0.06em; text-transform: uppercase; font-weight: 500; text-align: center; line-height: 1.2; }
+
+.palette-row { display: flex; flex-wrap: wrap; gap: 4px; }
+.swatch { width: 18px; height: 18px; border-radius: 50%; cursor: pointer; border: 2px solid transparent; transition: transform .1s, border-color .1s; flex-shrink: 0; }
+.swatch:hover { transform: scale(1.12); }
+.swatch.active { border-color: #fff; transform: scale(1.1); }
+.palette-sub { font-size: 9px; color: var(--dimmer); letter-spacing: 0.06em; margin-bottom: 5px; margin-top: 8px; text-transform: uppercase; }
+.palette-sub:first-child { margin-top: 0; }
+.custom-color { width: 18px; height: 18px; border-radius: 50%; border: 2px dashed var(--border2); cursor: pointer; position: relative; overflow: hidden; display: flex; align-items: center; justify-content: center; }
+.custom-color input[type=color] { position: absolute; opacity: 0; width: 100%; height: 100%; cursor: pointer; }
+.custom-color-icon { font-size: 9px; color: var(--dim); pointer-events: none; }
+.custom-color.active { border-color: #fff; border-style: solid; }
+
+.bg-row { display: flex; gap: 5px; }
+.bg-opt { width: 24px; height: 16px; border-radius: 3px; cursor: pointer; border: 2px solid transparent; transition: all .12s; }
+.bg-opt.active { border-color: #fff; }
+
+.canvas-wrap { flex: 1; position: relative; overflow: hidden; display: flex; align-items: stretch; justify-content: stretch; }
+#cv { width: 100%; height: 100%; display: block; }
+
+.fmt-chips { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 8px; }
+.fmt-chip { background: var(--bg); border: 1px solid var(--border2); color: var(--dim); font-size: 10px; padding: 4px 10px; border-radius: 10px; cursor: pointer; font-family: inherit; transition: all .12s; }
+.fmt-chip:hover { color: var(--text); border-color: #444; }
+.fmt-chip.active { border-color: #fff; color: #fff; background: rgba(255,255,255,.06); }
+input[type=number] { -moz-appearance: textfield; background: var(--bg); border: 1px solid var(--border2); color: var(--text); font-size: 11px; padding: 4px 6px; border-radius: 4px; width: 100%; box-sizing: border-box; font-family: inherit; outline: none; }
+input[type=number]::-webkit-outer-spin-button, input[type=number]::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+input[type=number]:focus { border-color: #555; }
+.exp-frame { position: absolute; pointer-events: none; box-sizing: border-box; border: 1px dashed rgba(255,255,255,.22); transition: all .2s; }
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <span class="topbar-title">Wave Stripes</span>
+  <span class="topbar-tag">generator</span>
+  <div class="topbar-right">
+    <button class="topbar-btn-ghost" id="btn-undo" type="button" title="Undo (Z)" style="display:inline-flex;align-items:center;justify-content:center;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7v6h6"/><path d="M21 17a9 9 0 0 0-15-6.7L3 13"/></svg></button>
+    <button class="topbar-btn-ghost" id="btn-redo" type="button" title="Redo (Y)" style="display:inline-flex;align-items:center;justify-content:center;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 7v6h-6"/><path d="M3 17a9 9 0 0 1 15-6.7L21 13"/></svg></button>
+    <button class="topbar-btn-ghost" id="btn-regen" style="display:inline-flex;align-items:center;gap:6px;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 0 1 15-6.7L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-15 6.7L3 16"/><path d="M3 21v-5h5"/></svg> Reorganizar</button>
+    <button class="topbar-btn-ghost" id="btn-export-png" type="button">PNG</button>
+    <button class="topbar-btn" id="btn-export">Exportar SVG</button>
+    <span id="theme-mount"></span>
+  </div>
+</div>
+
+<div class="main">
+<div class="panel">
+
+  <!-- Orientação -->
+  <div class="psec">
+    <div class="psec-title">Orientação</div>
+    <div class="orient-grid">
+      <button class="orient-btn active" data-orient="horizontal">
+        <svg width="28" height="20" viewBox="0 0 28 20"><path d="M2 6 Q8 2 14 6 Q20 10 26 6" stroke="currentColor" stroke-width="2.5" fill="none" stroke-linecap="round"/><path d="M2 14 Q8 10 14 14 Q20 18 26 14" stroke="currentColor" stroke-width="2.5" fill="none" stroke-linecap="round"/></svg>
+        <span class="orient-name">Horizontal</span>
+      </button>
+      <button class="orient-btn" data-orient="vertical">
+        <svg width="20" height="28" viewBox="0 0 20 28"><path d="M6 2 Q2 8 6 14 Q10 20 6 26" stroke="currentColor" stroke-width="2.5" fill="none" stroke-linecap="round"/><path d="M14 2 Q10 8 14 14 Q18 20 14 26" stroke="currentColor" stroke-width="2.5" fill="none" stroke-linecap="round"/></svg>
+        <span class="orient-name">Vertical</span>
+      </button>
+      <button class="orient-btn" data-orient="organic">
+        <svg width="28" height="28" viewBox="0 0 28 28"><path d="M2 10 Q5 4 10 8 Q15 12 20 6 Q24 2 26 8" stroke="currentColor" stroke-width="2.5" fill="none" stroke-linecap="round"/><path d="M2 20 Q7 16 12 20 Q17 24 22 18 Q25 14 26 18" stroke="currentColor" stroke-width="2.5" fill="none" stroke-linecap="round"/></svg>
+        <span class="orient-name">Orgânico</span>
+      </button>
+    </div>
+  </div>
+
+  <!-- Fitas -->
+  <div class="psec">
+    <div class="psec-title">Fitas</div>
+    <div class="ctrl-grid">
+      <div class="ctrl">
+        <div class="ctrl-head"><span class="ctrl-label">Número</span><span class="ctrl-val" id="v-count">6</span></div>
+        <input type="range" id="r-count" min="2" max="16" value="6" step="1">
+      </div>
+      <div class="ctrl">
+        <div class="ctrl-head"><span class="ctrl-label">Espessura</span><span class="ctrl-val" id="v-thick">80 px</span></div>
+        <input type="range" id="r-thick" min="20" max="200" value="80" step="2">
+      </div>
+      <div class="ctrl ctrl-full">
+        <div class="ctrl-head"><span class="ctrl-label">Espaçamento</span><span class="ctrl-val" id="v-gap">20 px</span></div>
+        <input type="range" id="r-gap" min="0" max="80" value="20" step="2">
+      </div>
+    </div>
+  </div>
+
+  <!-- Onda -->
+  <div class="psec">
+    <div class="psec-title">Onda</div>
+    <div class="ctrl-grid">
+      <div class="ctrl">
+        <div class="ctrl-head"><span class="ctrl-label">Amplitude</span><span class="ctrl-val" id="v-amp">60 px</span></div>
+        <input type="range" id="r-amp" min="0" max="150" value="60" step="2">
+        <div class="ctrl-hint">movimento vertical</div>
+      </div>
+      <div class="ctrl">
+        <div class="ctrl-head"><span class="ctrl-label">Frequência</span><span class="ctrl-val" id="v-freq">0.5x</span></div>
+        <input type="range" id="r-freq" min="1" max="10" value="5" step="1">
+        <div class="ctrl-hint">ciclos na largura</div>
+      </div>
+      <div class="ctrl ctrl-full">
+        <div class="ctrl-head"><span class="ctrl-label">Fase aleatória</span><span class="ctrl-val" id="v-phaserand">50%</span></div>
+        <input type="range" id="r-phaserand" min="0" max="100" value="50" step="1">
+        <div class="ctrl-hint">defasagem entre fitas</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Variação por fita -->
+  <div class="psec">
+    <div class="psec-title">Variação por fita</div>
+    <div class="ctrl-grid">
+      <div class="ctrl">
+        <div class="ctrl-head"><span class="ctrl-label">Var. espessura</span><span class="ctrl-val" id="v-thickvar">0%</span></div>
+        <input type="range" id="r-thickvar" min="0" max="80" value="0" step="5">
+        <div class="ctrl-hint">cada fita com sua grossura</div>
+      </div>
+      <div class="ctrl">
+        <div class="ctrl-head"><span class="ctrl-label">Var. amplitude</span><span class="ctrl-val" id="v-ampvar">0%</span></div>
+        <input type="range" id="r-ampvar" min="0" max="80" value="0" step="5">
+        <div class="ctrl-hint">cada fita com sua força</div>
+      </div>
+      <div class="ctrl ctrl-full">
+        <div class="ctrl-head"><span class="ctrl-label">Deriva</span><span class="ctrl-val" id="v-drift">0 px</span></div>
+        <input type="range" id="r-drift" min="0" max="180" value="0" step="5">
+        <div class="ctrl-hint">vagueia e cruza outras fitas</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Fatias -->
+  <div class="psec">
+    <div class="psec-title">Fatias</div>
+    <div class="ctrl-grid">
+      <div class="ctrl">
+        <div class="ctrl-head"><span class="ctrl-label">Número</span><span class="ctrl-val" id="v-slices">4</span></div>
+        <input type="range" id="r-slices" min="0" max="20" value="4" step="1">
+      </div>
+      <div class="ctrl">
+        <div class="ctrl-head"><span class="ctrl-label">Largura base</span><span class="ctrl-val" id="v-slicew">20%</span></div>
+        <input type="range" id="r-slicew" min="3" max="60" value="20" step="1">
+        <div class="ctrl-hint">% do comprimento</div>
+      </div>
+      <div class="ctrl">
+        <div class="ctrl-head"><span class="ctrl-label">Var. largura</span><span class="ctrl-val" id="v-slicevar">0%</span></div>
+        <input type="range" id="r-slicevar" min="0" max="90" value="0" step="5">
+        <div class="ctrl-hint">diversidade de tamanhos</div>
+      </div>
+      <div class="ctrl">
+        <div class="ctrl-head"><span class="ctrl-label">Posição rand.</span><span class="ctrl-val" id="v-slicepos">0%</span></div>
+        <input type="range" id="r-slicepos" min="0" max="100" value="0" step="5">
+        <div class="ctrl-hint">deslocamento por fita</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Formato de exportação -->
+  <div class="psec">
+    <div class="psec-title">Formato de exportação</div>
+    <div class="fmt-chips" id="fmt-chips">
+      <button class="fmt-chip active" data-w="1920" data-h="1080">16:9</button>
+      <button class="fmt-chip" data-w="1080" data-h="1080">1:1</button>
+      <button class="fmt-chip" data-w="1600" data-h="1200">4:3</button>
+      <button class="fmt-chip" data-w="2480" data-h="1754">A4</button>
+    </div>
+    <div class="ctrl-grid">
+      <div class="ctrl">
+        <div class="ctrl-head"><span class="ctrl-label">Largura</span></div>
+        <input type="number" id="exp-w" value="1920" min="100" max="8000" step="10">
+      </div>
+      <div class="ctrl">
+        <div class="ctrl-head"><span class="ctrl-label">Altura</span></div>
+        <input type="number" id="exp-h" value="1080" min="100" max="8000" step="10">
+      </div>
+    </div>
+    <div style="font-size:8px;color:var(--dimmer);margin-top:5px;letter-spacing:.04em;" id="exp-info">1920 × 1080 px</div>
+  </div>
+
+  <!-- Presets -->
+  <div class="psec">
+    <div class="psec-title">Presets</div>
+    <button class="topbar-btn-ghost" id="preset-save" type="button" style="width:100%;margin-bottom:8px;">Salvar atual</button>
+    <div id="presets-row" style="display:flex;flex-wrap:wrap;gap:4px;"></div>
+    <div style="font-size:8px;color:var(--dimmer);margin-top:8px;letter-spacing:.04em;">Z desfaz · Y refaz · E SVG · P PNG · R reorganiza</div>
+  </div>
+
+  <!-- Paleta -->
+  <div class="psec">
+    <div class="psec-title">Paleta</div>
+    <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px 14px;">
+      <div>
+        <div class="palette-sub">Fitas</div>
+        <div class="palette-row" id="pal-base"></div>
+      </div>
+      <div>
+        <div class="palette-sub">Fatias</div>
+        <div class="palette-row" id="pal-slice"></div>
+      </div>
+    </div>
+    <div class="palette-sub" style="margin-top:10px;">Fundo</div>
+    <div class="bg-row" id="bg-row">
+      <div class="bg-opt active" data-bg="#2B0D2F" style="background:#2B0D2F;" title="Deep Sky"></div>
+      <div class="bg-opt" data-bg="#FFF9EA" style="background:#FFF9EA;" title="Cloud Warm"></div>
+      <div class="bg-opt" data-bg="#EF91FF" style="background:#EF91FF;" title="Bitteroot"></div>
+      <div class="custom-color" id="bg-custom" title="Cor personalizada">
+        <input type="color" id="bg-custom-input" value="#2B0D2F">
+        <span class="custom-color-icon">+</span>
+      </div>
+    </div>
+  </div>
+
+</div><!-- /panel -->
+
+<div class="canvas-wrap">
+  <canvas id="cv"></canvas>
+  <div id="exp-frame" class="exp-frame"></div>
+</div>
+</div><!-- /main -->
+
+<script>
+/* ── State ── */
+const S = {
+  orient: 'horizontal',
+  count: 6, thick: 80, gap: 20,
+  amp: 60, freq: 0.5, phaserand: 50,
+  thickvar: 0, ampvar: 0, drift: 0,
+  slices: 4, slicew: 20, slicevar: 0, slicepos: 0,
+  taper: 0, taperMode: 'ends',
+  bg: '#2B0D2F',
+};
+
+/* ── Export dimensions (independent of preview canvas size) ── */
+const EXP = { w: 1920, h: 1080 };
+
+const BRAND = {
+  stripes: [
+    { name: 'Deep Sky',   hex: '#2B0D2F' },
+    { name: 'Purple',     hex: '#590073' },
+    { name: 'Violet',     hex: '#A855C8' },
+    { name: 'Bitteroot',  hex: '#EF91FF' },
+    { name: 'Sun Light',  hex: '#FEE1B4' },
+    { name: 'Cloud Warm', hex: '#FFF9EA' },
+  ],
+  slices: [
+    { name: 'Bitteroot',  hex: '#EF91FF' },
+    { name: 'Sun Light',  hex: '#FEE1B4' },
+    { name: 'Cloud Warm', hex: '#FFF9EA' },
+    { name: 'Violet',     hex: '#A855C8' },
+    { name: 'Purple',     hex: '#590073' },
+    { name: 'Deep Sky',   hex: '#2B0D2F' },
+  ],
+};
+
+const PALETTES = {
+  base:  BRAND.stripes.map(c => c.hex),
+  slice: BRAND.slices.map(c => c.hex),
+};
+
+let activeBases  = [0, 1, 2, 3, 4, 5];
+let activeSlices = [0, 1, 2];
+
+/* per-ribbon randomized arrays */
+let phases          = [];
+let sliceOffsets    = [];
+let organicNoise    = [];
+let sliceWidthSeeds = [];
+let driftPhases     = [];
+let thickFactors    = [];  // -1..1, scaled by thickvar
+let ampFactors      = [];  // -1..1, scaled by ampvar
+
+/* ── Seeded RNG ── */
+function rng(seed) {
+  let s = (seed + 1) * 2654435761 >>> 0;
+  return () => { s ^= s << 13; s ^= s >> 17; s ^= s << 5; return (s >>> 0) / 4294967296; };
+}
+
+function initRandom() {
+  const r = rng(Date.now() % 9999);
+  const n = S.count;
+  phases          = Array.from({length: n}, () => r() * Math.PI * 2);  /* raw 0‥2π; phaserand applied at render time */
+  sliceOffsets    = Array.from({length: n}, () => r() * 60 - 30);
+  organicNoise    = Array.from({length: n}, () => Array.from({length: 12}, () => r() * 2 - 1));
+  sliceWidthSeeds = Array.from({length: n}, () => Math.floor(r() * 9999));
+  driftPhases     = Array.from({length: n}, () => r() * Math.PI * 2);
+  thickFactors    = Array.from({length: n}, () => r() * 2 - 1);
+  ampFactors      = Array.from({length: n}, () => r() * 2 - 1);
+}
+
+/* ── Canvas ── */
+const cv  = document.getElementById('cv');
+const ctx = cv.getContext('2d');
+
+function resize() {
+  cv.width  = cv.offsetWidth;
+  cv.height = cv.offsetHeight;
+  draw();
+}
+
+/* ── Wave helpers ── */
+function sineY(t, amp, freq, phase) {
+  return amp * Math.sin(t * freq * Math.PI * 2 + phase);
+}
+
+function organicY(t, amp, noise) {
+  let y = 0;
+  for (let h = 0; h < noise.length; h++) {
+    y += noise[h] * amp * (1 / (h + 1)) * Math.sin(t * (h + 1) * Math.PI * 2 + noise[h] * 3);
+  }
+  return y * 0.5;
+}
+
+/*
+  driftY: slow-frequency sine that moves the ribbon's baseline
+  across the canvas — this causes ribbons to wander and cross.
+  Uses a fixed frequency of ~0.35 cycles so the drift feels
+  gradual rather than oscillating.
+*/
+function driftY(t, amp, phase) {
+  return amp * Math.sin(t * 0.35 * Math.PI * 2 + phase);
+}
+
+/* ── Taper scale: returns a 0‥1 multiplier for half-thickness at position t.
+   'ends'  → sin curve: thin at both ends, full at center.
+   'center'→ |cos| curve: full at ends, thin at center (bowtie). */
+function taperScale(t, taper, mode) {
+  if (taper === 0) return 1;
+  const f    = taper / 100;
+  const base = mode === 'center'
+    ? Math.abs(Math.cos(t * Math.PI))
+    : Math.sin(t * Math.PI);
+  return 1 - f * (1 - base);
+}
+
+/* ── Ribbon geometry ── */
+function ribbonPoints(W, H, baseCx, baseCy, amp, freq, wavePhase, thick, orient, noiseArr, driftAmp, driftPhase, taper, taperMode) {
+  const N = Math.max(200, W);
+  const top = [], bot = [];
+
+  if (orient === 'horizontal') {
+    for (let i = 0; i <= N; i++) {
+      const t   = i / N;
+      const x   = t * W;
+      const cy  = baseCy + driftY(t, driftAmp, driftPhase) + sineY(t, amp, freq, wavePhase);
+      const hw  = thick / 2 * taperScale(t, taper, taperMode);
+      top.push({ x, y: cy - hw });
+      bot.push({ x, y: cy + hw });
+    }
+  } else if (orient === 'vertical') {
+    for (let i = 0; i <= N; i++) {
+      const t   = i / N;
+      const y   = t * H;
+      const cx  = baseCx + driftY(t, driftAmp, driftPhase) + sineY(t, amp, freq, wavePhase);
+      const hw  = thick / 2 * taperScale(t, taper, taperMode);
+      top.push({ x: cx - hw, y });
+      bot.push({ x: cx + hw, y });
+    }
+  } else { /* organic */
+    for (let i = 0; i <= N; i++) {
+      const t   = i / N;
+      const x   = t * W;
+      const cy  = baseCy + driftY(t, driftAmp, driftPhase) + organicY(t, amp, noiseArr || []);
+      const hw  = thick / 2 * taperScale(t, taper, taperMode);
+      top.push({ x, y: cy - hw });
+      bot.push({ x, y: cy + hw });
+    }
+  }
+
+  return { top, bot };
+}
+
+/* ── Arc-length segments with per-slice variable widths ── */
+function computeSegments(top, bot, nSlices, slicePct, sliceOffset, sliceVar, widthSeed) {
+  const N = top.length;
+  const arc = new Float32Array(N);
+  for (let i = 1; i < N; i++) {
+    const mx1 = (top[i-1].x + bot[i-1].x) * 0.5, my1 = (top[i-1].y + bot[i-1].y) * 0.5;
+    const mx2 = (top[i].x   + bot[i].x)   * 0.5, my2 = (top[i].y   + bot[i].y)   * 0.5;
+    arc[i] = arc[i-1] + Math.hypot(mx2 - mx1, my2 - my1);
+  }
+  const totalLen = arc[N - 1];
+  if (totalLen < 1) return [];
+
+  const baseLen = totalLen * (slicePct / 100);
+  const spacing = totalLen / (nSlices + 1);
+  const offLen  = sliceOffset * 0.3 * spacing;
+  const varFrac = sliceVar / 100;
+  const r       = rng(widthSeed);
+
+  function arcIdx(target) {
+    if (target <= 0) return 0;
+    if (target >= totalLen) return N - 1;
+    let lo = 0, hi = N - 1;
+    while (lo < hi - 1) { const m = (lo + hi) >> 1; if (arc[m] <= target) lo = m; else hi = m; }
+    return lo;
+  }
+
+  return Array.from({length: nSlices}, (_, s) => {
+    const factor  = varFrac > 0 ? 1 - varFrac + r() * varFrac * 2 : 1;
+    const bandLen = baseLen * Math.max(0.05, factor);
+    const mid     = spacing * (s + 1) + offLen;
+    const i0 = arcIdx(mid - bandLen * 0.5);
+    const i1 = Math.min(N - 1, arcIdx(mid + bandLen * 0.5) + 1);
+    return { i0, i1 };
+  });
+}
+
+/* ── Draw one ribbon to canvas, return SVG path data ── */
+function drawRibbon(ctx, top, bot, fillColor, sliceColors, nSlices, slicePct, sliceOffset, sliceVar, widthSeed) {
+  if (!top.length) return;
+  ctx.save();
+  ctx.beginPath();
+  ctx.moveTo(top[0].x, top[0].y);
+  for (let i = 1; i < top.length; i++) ctx.lineTo(top[i].x, top[i].y);
+  for (let i = bot.length - 1; i >= 0; i--) ctx.lineTo(bot[i].x, bot[i].y);
+  ctx.closePath();
+  ctx.fillStyle = fillColor;
+  ctx.fill();
+  ctx.clip();
+
+  if (nSlices > 0 && sliceColors.length) {
+    const segs = computeSegments(top, bot, nSlices, slicePct, sliceOffset, sliceVar, widthSeed);
+    segs.forEach(({i0, i1}, s) => {
+      if (i1 <= i0) return;
+      ctx.beginPath();
+      ctx.moveTo(top[i0].x, top[i0].y);
+      for (let i = i0 + 1; i <= i1; i++) ctx.lineTo(top[i].x, top[i].y);
+      for (let i = i1; i >= i0; i--) ctx.lineTo(bot[i].x, bot[i].y);
+      ctx.closePath();
+      ctx.fillStyle = sliceColors[s % sliceColors.length];
+      ctx.fill();
+    });
+  }
+  ctx.restore();
+}
+
+/* ── Color helpers ── */
+function distributeColors(activeArr, pal, n) {
+  const pool = activeArr.map(i => pal[i]);
+  if (!pool.length) return Array(n).fill('#ffffff');
+  if (pool.length === 1) return Array(n).fill(pool[0]);
+  const result = [];
+  for (let i = 0; i < n; i++) {
+    const prev    = result[i - 1];
+    const choices = pool.filter(c => c !== prev);
+    result.push(choices[i % choices.length]);
+  }
+  return result;
+}
+function getColors(arr, pal) { return arr.map(i => pal[i]); }
+
+/* ── Per-ribbon params (shared between draw + SVG export) ── */
+function buildRibbonParams(W, H) {
+  if (!phases.length) initRandom();
+  const n         = S.count;
+  const isVert    = S.orient === 'vertical';
+  const crossDim  = isVert ? W : H;
+  const totalThick = n * S.thick + (n - 1) * S.gap;
+  const startOff  = (crossDim - totalThick) / 2;
+  const bases     = distributeColors(activeBases, PALETTES.base, n);
+  const slicePool = getColors(activeSlices, PALETTES.slice);
+
+  return Array.from({length: n}, (_, i) => {
+    const thickF = thickFactors[i % thickFactors.length] || 0;
+    const ampF   = ampFactors[i % ampFactors.length] || 0;
+    const thick  = Math.max(8, S.thick  * (1 + thickF * S.thickvar / 100));
+    const amp    = Math.max(0, S.amp    * (1 + ampF   * S.ampvar   / 100));
+    const center = startOff + S.thick / 2 + i * (S.thick + S.gap);
+
+    return {
+      fc:         bases[i % bases.length],
+      slicePool,
+      thick,
+      amp,
+      freq:       S.freq,
+      phase:      (phases[i % phases.length] || 0) * (S.phaserand / 100),
+      driftAmp:   S.drift,
+      driftPhase: driftPhases[i % driftPhases.length] || 0,
+      cx:         isVert ? center : W / 2,
+      cy:         isVert ? H / 2  : center,
+      noise:      organicNoise[i % organicNoise.length] || [],
+      sliceOffset:(sliceOffsets[i % sliceOffsets.length] || 0) * (S.slicepos / 100),
+      widthSeed:  sliceWidthSeeds[i % sliceWidthSeeds.length] || i,
+    };
+  });
+}
+
+/* ── Main draw ── */
+/* ── Render to any 2D context at given dimensions ── */
+function renderToContext(targetCtx, W, H) {
+  targetCtx.fillStyle = S.bg;
+  targetCtx.fillRect(0, 0, W, H);
+  const ribbons = buildRibbonParams(W, H);
+  ribbons.forEach(p => {
+    const {top, bot} = ribbonPoints(W, H, p.cx, p.cy, p.amp, p.freq, p.phase, p.thick, S.orient, p.noise, p.driftAmp, p.driftPhase);
+    drawRibbon(targetCtx, top, bot, p.fc, p.slicePool, S.slices, S.slicew, p.sliceOffset, S.slicevar, p.widthSeed);
+  });
+}
+
+function draw() {
+  renderToContext(ctx, cv.width, cv.height);
+}
+
+/* ── Palette ── */
+function buildPalette(id, pal, activeArr, names) {
+  const el = document.getElementById(id);
+  el.innerHTML = '';
+  pal.forEach((c, i) => {
+    const s = document.createElement('div');
+    s.className = 'swatch' + (activeArr.includes(i) ? ' active' : '');
+    s.style.background = c;
+    s.title = names?.[i] ? `${names[i]}\n${c}` : c;
+    s.addEventListener('click', () => {
+      const idx = activeArr.indexOf(i);
+      if (idx > -1) { if (activeArr.length > 1) activeArr.splice(idx, 1); }
+      else activeArr.push(i);
+      buildPalette(id, pal, activeArr, names);
+      draw();
+    });
+    el.appendChild(s);
+  });
+  const custom = document.createElement('div');
+  custom.className = 'custom-color';
+  custom.innerHTML = `<input type="color" value="#ffffff"><span class="custom-color-icon">+</span>`;
+  custom.querySelector('input').addEventListener('input', e => {
+    pal.push(e.target.value);
+    activeArr.push(pal.length - 1);
+    buildPalette(id, pal, activeArr, names);
+    draw();
+  });
+  el.appendChild(custom);
+}
+
+buildPalette('pal-base',  PALETTES.base,  activeBases,  BRAND.stripes.map(c => c.name));
+buildPalette('pal-slice', PALETTES.slice, activeSlices, BRAND.slices.map(c => c.name));
+
+/* ── Sliders ── */
+const sliderDefs = [
+  { id: 'count',    key: 'count',    fmt: v => v,                        int: true },
+  { id: 'thick',    key: 'thick',    fmt: v => `${v} px`                           },
+  { id: 'gap',      key: 'gap',      fmt: v => `${v} px`                           },
+  { id: 'amp',      key: 'amp',      fmt: v => `${v} px`                           },
+  { id: 'freq',     key: 'freq',     fmt: v => (v / 10).toFixed(1) + 'x'           },
+  { id: 'phaserand',key: 'phaserand',fmt: v => `${v}%`                             },
+  { id: 'thickvar', key: 'thickvar', fmt: v => `${v}%`                             },
+  { id: 'ampvar',   key: 'ampvar',   fmt: v => `${v}%`                             },
+  { id: 'drift',    key: 'drift',    fmt: v => `${v} px`                           },
+  { id: 'slices',   key: 'slices',   fmt: v => v,                        int: true },
+  { id: 'slicew',   key: 'slicew',   fmt: v => `${v}%`                             },
+  { id: 'slicevar', key: 'slicevar', fmt: v => `${v}%`                             },
+  { id: 'slicepos', key: 'slicepos', fmt: v => `${v}%`                             },
+];
+
+sliderDefs.forEach(({id, key, fmt, int}) => {
+  const el  = document.getElementById(`r-${id}`);
+  const out = document.getElementById(`v-${id}`);
+  if (!el) return;
+  el.addEventListener('input', () => {
+    const raw = +el.value;
+    S[key] = int ? Math.round(raw) : raw;
+    if (key === 'freq') S.freq = raw / 10;
+    if (key === 'count') { phases = []; sliceOffsets = []; organicNoise = []; sliceWidthSeeds = []; driftPhases = []; thickFactors = []; ampFactors = []; }
+    if (out) out.textContent = fmt(raw);
+    draw();
+  });
+  if (out) out.textContent = fmt(+el.value);
+});
+
+/* ── Orientation ── */
+document.querySelectorAll('.orient-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.orient-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    S.orient = btn.dataset.orient;
+    draw();
+  });
+});
+
+/* ── Background ── */
+document.querySelectorAll('.bg-opt').forEach(opt => {
+  opt.addEventListener('click', () => {
+    document.querySelectorAll('.bg-opt').forEach(o => o.classList.remove('active'));
+    document.getElementById('bg-custom').classList.remove('active');
+    opt.classList.add('active');
+    S.bg = opt.dataset.bg;
+    draw();
+  });
+});
+
+/* ── Reorganizar ── */
+document.getElementById('btn-regen').addEventListener('click', () => {
+  phases = []; sliceOffsets = []; organicNoise = []; sliceWidthSeeds = [];
+  driftPhases = []; thickFactors = []; ampFactors = [];
+  initRandom();
+  draw();
+});
+
+/* ── SVG path helper ── */
+function svgPathD(top, bot, precision = 2) {
+  const p = n => n.toFixed(precision);
+  let d = `M ${p(top[0].x)} ${p(top[0].y)}`;
+  for (let i = 1; i < top.length; i++) d += ` L ${p(top[i].x)} ${p(top[i].y)}`;
+  for (let i = bot.length - 1; i >= 0; i--) d += ` L ${p(bot[i].x)} ${p(bot[i].y)}`;
+  return d + ' Z';
+}
+
+/* ── Export SVG — grouped by ribbon, slices individually named ── */
+document.getElementById('btn-export').addEventListener('click', () => {
+  const W = EXP.w, H = EXP.h;
+  const ribbons = buildRibbonParams(W, H);
+  let defs = '', body = '';
+
+  body += `<rect id="fundo" width="${W}" height="${H}" fill="${S.bg}"/>`;
+
+  ribbons.forEach((p, i) => {
+    const {top, bot} = ribbonPoints(W, H, p.cx, p.cy, p.amp, p.freq, p.phase, p.thick, S.orient, p.noise, p.driftAmp, p.driftPhase);
+    const d      = svgPathD(top, bot);
+    const clipId = `clip-fita-${i}`;
+
+    defs += `<clipPath id="${clipId}"><path d="${d}"/></clipPath>`;
+
+    /* Open ribbon group */
+    body += `\n  <g id="fita-${i}" data-fill="${p.fc}">`;
+    body += `\n    <path id="fita-${i}-corpo" fill="${p.fc}" d="${d}"/>`;
+
+    if (S.slices > 0 && p.slicePool.length) {
+      const segs = computeSegments(top, bot, S.slices, S.slicew, p.sliceOffset, S.slicevar, p.widthSeed);
+      body += `\n    <g clip-path="url(#${clipId})">`;
+      segs.forEach(({i0, i1}, s) => {
+        if (i1 <= i0) return;
+        const color = p.slicePool[s % p.slicePool.length];
+        let sd = `M ${top[i0].x.toFixed(1)} ${top[i0].y.toFixed(1)}`;
+        for (let k = i0 + 1; k <= i1; k++) sd += ` L ${top[k].x.toFixed(1)} ${top[k].y.toFixed(1)}`;
+        for (let k = i1; k >= i0; k--) sd += ` L ${bot[k].x.toFixed(1)} ${bot[k].y.toFixed(1)}`;
+        sd += ' Z';
+        body += `\n      <path id="fita-${i}-fatia-${s}" fill="${color}" d="${sd}"/>`;
+      });
+      body += `\n    </g>`;
+    }
+
+    body += `\n  </g>`;
+  });
+
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">\n<defs>${defs}\n</defs>${body}\n</svg>`;
+  downloadText(svg, 'wave-stripes.svg', 'image/svg+xml');
+});
+
+function downloadText(text, name, type) {
+  const blob = new Blob([text], {type});
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement('a');
+  a.href = url; a.download = name; a.click();
+  URL.revokeObjectURL(url);
+}
+
+/* ── PNG export — offscreen canvas at full EXP resolution ── */
+document.getElementById('btn-export-png').addEventListener('click', () => {
+  const W = EXP.w, H = EXP.h;
+  const off = document.createElement('canvas');
+  off.width = W; off.height = H;
+  renderToContext(off.getContext('2d'), W, H);
+  off.toBlob(b => Chuchu.download(b, 'wave-stripes.png'), 'image/png');
+  Chuchu.toast(`PNG ${W}×${H} exportado`);
+});
+
+/* ── Export frame overlay ── */
+function updateExpFrame() {
+  const wrap = document.querySelector('.canvas-wrap');
+  const frame = document.getElementById('exp-frame');
+  const ww = wrap.offsetWidth, wh = wrap.offsetHeight;
+  const ratio = EXP.w / EXP.h;
+  let fw, fh;
+  if (ww / wh > ratio) { fh = wh * 0.92; fw = fh * ratio; }
+  else                  { fw = ww * 0.92; fh = fw / ratio; }
+  frame.style.width  = fw + 'px';
+  frame.style.height = fh + 'px';
+  frame.style.left   = ((ww - fw) / 2) + 'px';
+  frame.style.top    = ((wh - fh) / 2) + 'px';
+}
+
+function setExpSize(w, h) {
+  EXP.w = w; EXP.h = h;
+  document.getElementById('exp-w').value = w;
+  document.getElementById('exp-h').value = h;
+  document.getElementById('exp-info').textContent = `${w} × ${h} px`;
+  updateExpFrame();
+}
+
+document.getElementById('fmt-chips').addEventListener('click', e => {
+  const btn = e.target.closest('.fmt-chip');
+  if (!btn) return;
+  document.querySelectorAll('.fmt-chip').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  setExpSize(+btn.dataset.w, +btn.dataset.h);
+});
+
+function onExpInput() {
+  const w = Math.max(100, Math.min(8000, +document.getElementById('exp-w').value || EXP.w));
+  const h = Math.max(100, Math.min(8000, +document.getElementById('exp-h').value || EXP.h));
+  document.querySelectorAll('.fmt-chip').forEach(b => b.classList.remove('active'));
+  setExpSize(w, h);
+}
+document.getElementById('exp-w').addEventListener('change', onExpInput);
+document.getElementById('exp-h').addEventListener('change', onExpInput);
+
+/* ── Init ── */
+initRandom();
+window.addEventListener('resize', () => { resize(); updateExpFrame(); });
+setTimeout(() => { resize(); updateExpFrame(); }, 80);
+
+const drawRaf = Chuchu.rafThrottle(draw);
+document.querySelectorAll('input[type=range]').forEach(el => el.addEventListener('input', drawRaf));
+document.querySelectorAll('input[type=range]').forEach(el => {
+  const lbl = el.closest('.ctrl')?.querySelector('.ctrl-label')?.textContent || el.id;
+  Chuchu.enhanceRange(el, lbl);
+});
+
+Chuchu.initTheme();
+Chuchu.mountThemeToggle(document.getElementById('theme-mount'));
+Chuchu.mountPanelToggle(document.querySelector('.panel'));
+
+/* ── Undo / redo ── */
+function snapshot() {
+  return { S: {...S}, activeBases: [...activeBases], activeSlices: [...activeSlices] };
+}
+function restore(snap) {
+  Object.assign(S, snap.S);
+  activeBases  = [...snap.activeBases];
+  activeSlices = [...snap.activeSlices];
+  ['count','thick','gap','amp','phaserand','thickvar','ampvar','drift','slices','slicew','slicevar','slicepos'].forEach(k => {
+    const el = document.getElementById(`r-${k}`);
+    if (el) { el.value = S[k]; el.dispatchEvent(new Event('input')); }
+  });
+  const freqEl = document.getElementById('r-freq');
+  freqEl.value = Math.round(S.freq * 10);
+  document.getElementById('v-freq').textContent = S.freq.toFixed(1) + 'x';
+  document.querySelectorAll('.orient-btn').forEach(b => b.classList.toggle('active', b.dataset.orient === S.orient));
+  document.querySelectorAll('.bg-opt').forEach(o => o.classList.toggle('active', o.dataset.bg === S.bg));
+  /* sync custom bg picker */
+  const customBgInput = document.getElementById('bg-custom-input');
+  if (customBgInput) customBgInput.value = S.bg;
+  const hasFixedMatch = [...document.querySelectorAll('.bg-opt')].some(o => o.dataset.bg === S.bg);
+  document.getElementById('bg-custom').classList.toggle('active', !hasFixedMatch);
+  buildPalette('pal-base',  PALETTES.base,  activeBases,  BRAND.stripes.map(c => c.name));
+  buildPalette('pal-slice', PALETTES.slice, activeSlices, BRAND.slices.map(c => c.name));
+  drawRaf();
+}
+
+const history = Chuchu.createHistory(60);
+history.reset(snapshot());
+const debSnap = (() => { let t; return () => { clearTimeout(t); t = setTimeout(() => history.push(snapshot()), 250); }; })();
+/* Bug fix: range inputs fire 'input'; click-based elements (orient, bg, swatches) fire 'click'. */
+document.querySelectorAll('input[type=range]').forEach(el => el.addEventListener('input', debSnap, true));
+document.querySelectorAll('.orient-btn,.bg-opt').forEach(el => el.addEventListener('click', debSnap));
+/* Use delegation on palette containers so dynamically rebuilt swatches are always covered. */
+document.getElementById('pal-base').addEventListener('click',  e => { if (e.target.classList.contains('swatch')) debSnap(); });
+document.getElementById('pal-slice').addEventListener('click', e => { if (e.target.classList.contains('swatch')) debSnap(); });
+
+/* ── Custom background color ── */
+document.getElementById('bg-custom-input').addEventListener('input', e => {
+  document.querySelectorAll('.bg-opt').forEach(o => o.classList.remove('active'));
+  document.getElementById('bg-custom').classList.add('active');
+  S.bg = e.target.value;
+  draw();
+  debSnap();
+});
+document.getElementById('btn-undo').addEventListener('click', () => { const s = history.undo(); if (s) restore(s); });
+document.getElementById('btn-redo').addEventListener('click', () => { const s = history.redo(); if (s) restore(s); });
+
+/* ── Presets ── */
+const presets = Chuchu.createPresets('wave-stripes');
+function renderPresets() {
+  const row = document.getElementById('presets-row');
+  row.innerHTML = '';
+  const names = presets.list();
+  if (!names.length) { row.innerHTML = '<span style="font-size:9px;color:var(--dimmer);">Nenhum preset salvo</span>'; return; }
+  names.forEach(n => {
+    const chip = document.createElement('button');
+    chip.className = 'preset-chip';
+    chip.type = 'button';
+    chip.innerHTML = `<span>${n}</span><span class="x" title="Excluir">×</span>`;
+    chip.firstChild.addEventListener('click', () => { restore(presets.load(n)); history.push(snapshot()); Chuchu.toast(`Preset "${n}"`); });
+    chip.lastChild.addEventListener('click', e => { e.stopPropagation(); presets.remove(n); renderPresets(); });
+    row.appendChild(chip);
+  });
+}
+document.getElementById('preset-save').addEventListener('click', () => {
+  const name = prompt('Nome do preset:');
+  if (!name) return;
+  presets.save(name.trim(), snapshot()); renderPresets();
+  Chuchu.toast(`Salvo "${name}"`);
+});
+renderPresets();
+
+/* ── Shortcuts ── */
+Chuchu.bindShortcuts({
+  'z':           () => document.getElementById('btn-undo').click(),
+  'meta+z':      () => document.getElementById('btn-undo').click(),
+  'y':           () => document.getElementById('btn-redo').click(),
+  'shift+meta+z':() => document.getElementById('btn-redo').click(),
+  'e':           () => document.getElementById('btn-export').click(),
+  'p':           () => document.getElementById('btn-export-png').click(),
+  'r':           () => document.getElementById('btn-regen').click(),
+});
+</script>
+</body>
+</html>
